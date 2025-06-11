@@ -19,7 +19,12 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
     RESULT_VARIABLE RETURN_CODE
   )
   if(NOT RETURN_CODE STREQUAL "0")
-    message(FATAL_ERROR "Error calling git describe")
+    # message(FATAL_ERROR "Error calling git describe")
+    message(WARNING "git describe failed, using fallback version 6.0.4")
+    set(CCF_VERSION "ccf-6.0.4")
+    set(CCF_VERSION_COMPONENTS "ccf;6.0.4")
+    set(CCF_RELEASE_VERSION "6.0.4")
+    return()
   endif()
 
   # Convert git description into cmake list, separated at '-'
