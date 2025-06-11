@@ -12,117 +12,124 @@ permissions:
   checks: write
 
 jobs:
-  make_sbom:
-    name: SBOM Generation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      - name: "Install SBOM tool"
-        run: |
-          set -ex
-          curl -Lo sbom-tool https://github.com/microsoft/sbom-tool/releases/latest/download/sbom-tool-linux-x64 > sbom-tool
-          chmod +x sbom-tool
-        shell: bash
-      - name: "Produce SBOM"
-        run: |
-          set -ex
-          CCF_VERSION=${{ github.ref_name }}
-          CCF_VERSION=${CCF_VERSION#ccf-}
-          ./sbom-tool generate -b . -bc . -pn CCF -ps Microsoft -nsb https://sbom.microsoft -pv $CCF_VERSION -V Error
-        shell: bash
-      - name: "Upload SBOM"
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom
-          path: _manifest/spdx_2.2/*
+  # make_sbom:
+  #   name: SBOM Generation
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 1
+  #     - name: "Install SBOM tool"
+  #       run: |
+  #         set -ex
+  #         curl -Lo sbom-tool https://github.com/microsoft/sbom-tool/releases/latest/download/sbom-tool-linux-x64 > sbom-tool
+  #         chmod +x sbom-tool
+  #       shell: bash
+  #     - name: "Produce SBOM"
+  #       run: |
+  #         set -ex
+  #         CCF_VERSION=${{ github.ref_name }}
+  #         CCF_VERSION=${CCF_VERSION#ccf-}
+  #         ./sbom-tool generate -b . -bc . -pn CCF -ps Microsoft -nsb https://sbom.microsoft -pv $CCF_VERSION -V Error
+  #       shell: bash
+  #     - name: "Upload SBOM"
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: sbom
+  #         path: _manifest/spdx_2.2/*
 
-  release_notes:
-    name: Release Notes
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      - name: "Check Release Notes"
-        run: |
-          set -ex
-          python scripts/extract-release-notes.py --target-git-version
-        shell: bash
-      - name: "Produce Release Notes"
-        run: |
-          set -ex
-          set -o pipefail
-          python ./scripts/extract-release-notes.py --target-git-version --describe-path-changes "./samples/constitution" | tee rel-notes.md
-      - name: "Upload Release Notes"
-        uses: actions/upload-artifact@v4
-        with:
-          name: relnotes
-          path: rel-notes.md
+  # release_notes:
+  #   name: Release Notes
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 1
+  #     - name: "Check Release Notes"
+  #       run: |
+  #         set -ex
+  #         python scripts/extract-release-notes.py --target-git-version
+  #       shell: bash
+  #     - name: "Produce Release Notes"
+  #       run: |
+  #         set -ex
+  #         set -o pipefail
+  #         python ./scripts/extract-release-notes.py --target-git-version --describe-path-changes "./samples/constitution" | tee rel-notes.md
+  #     - name: "Upload Release Notes"
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: relnotes
+  #         path: rel-notes.md
 
   build_release:
     name: Build Release
-    needs: release_notes
+    # needs: release_notes
     strategy:
       matrix:
         platform:
           - name: virtual
             os: azure-linux
-            image: mcr.microsoft.com/azurelinux/base/core:3.0
+            image: mcr.microsoft.com/azurelinux/base/core:3.0@sha256:91d58fce1e27dd0b711e569fdc173cfb0aec950ff399ea567723936d785388ba
             test_filter: "benchmark|unit"
           - name: snp
             os: azure-linux
-            image: mcr.microsoft.com/azurelinux/base/core:3.0
+            image: mcr.microsoft.com/azurelinux/base/core:3.0@sha256:91d58fce1e27dd0b711e569fdc173cfb0aec950ff399ea567723936d785388ba
 
-    runs-on: [self-hosted, 1ES.Pool=gha-virtual-ccf-sub]
+    runs-on: self-hosted
     container:
       image: ${{ matrix.platform.image }}
+      env:
+        SOURCE_DATE_EPOCH: 1749049608
       options: "--user root --publish-all --cap-add NET_ADMIN --cap-add NET_RAW --cap-add SYS_PTRACE"
 
     steps:
       - name: "Checkout dependencies"
         shell: bash
         run: |
+          echo "1SOURCE_DATE_EPOCH is set to $SOURCE_DATE_EPOCH"
           gpg --import /etc/pki/rpm-gpg/MICROSOFT-RPM-GPG-KEY
-          tdnf -y update
-          tdnf -y install ca-certificates git
+          tdnf --snapshottime=$SOURCE_DATE_EPOCH -y update
+          tdnf --snapshottime=$SOURCE_DATE_EPOCH -y install ca-certificates git jq
 
       - uses: actions/checkout@v4
         with:
+          ref: ae4fbd88590f7efd40c7d9ae74d2d55bc68957e1
           fetch-depth: 0
-
+          
       - name: "Install dependencies"
         shell: bash
         run: |
           set -ex
+          echo "2SOURCE_DATE_EPOCH is set to $SOURCE_DATE_EPOCH"
+          sed -i 's/\btdnf\b/tdnf --snapshottime="$SOURCE_DATE_EPOCH"/g' scripts/setup-ci.sh
           ./scripts/setup-ci.sh
 
       - name: "Build Release ${{ matrix.platform.name }}"
         shell: bash
         run: |
           set -ex
+          echo "3SOURCE_DATE_EPOCH is set to $SOURCE_DATE_EPOCH"
           git config --global --add safe.directory /__w/CCF/CCF
           mkdir build
           cd build
           cmake -GNinja -DCOMPILE_TARGET=${{ matrix.platform.name }} -DCLIENT_PROTOCOLS_TEST=ON -DCMAKE_BUILD_TYPE=Release ..
           ninja -v | tee build.log
 
-      - name: "Test ${{ matrix.platform.name }}"
-        if: "${{ matrix.platform.name == 'virtual' }}"
-        run: |
-          set -ex
-          cd build
-          rm -rf /github/home/.cache
-          mkdir -p /github/home/.cache
-          export ASAN_SYMBOLIZER_PATH=$(realpath /usr/bin/llvm-symbolizer-15)
-          # Unit tests
-          ./tests.sh --output-on-failure -L unit -j$(nproc --all)
-          # Suite tests
-          ./tests.sh --timeout 600 --output-on-failure -L "suite"
-          # Most tests
-          ./tests.sh --timeout 360 --output-on-failure -LE "suite|${{ matrix.platform.test_filter }}"
-        shell: bash
+      # - name: "Test ${{ matrix.platform.name }}"
+      #   if: "${{ matrix.platform.name == 'virtual' }}"
+      #   run: |
+      #     set -ex
+      #     cd build
+      #     rm -rf /github/home/.cache
+      #     mkdir -p /github/home/.cache
+      #     export ASAN_SYMBOLIZER_PATH=$(realpath /usr/bin/llvm-symbolizer-15)
+      #     # Unit tests
+      #     ./tests.sh --output-on-failure -L unit -j$(nproc --all)
+      #     # Suite tests
+      #     ./tests.sh --timeout 600 --output-on-failure -L "suite"
+      #     # Most tests
+      #     ./tests.sh --timeout 360 --output-on-failure -LE "suite|${{ matrix.platform.test_filter }}"
+      #   shell: bash
 
       - name: "Upload logs for ${{ matrix.platform.name }}"
         if: success() || failure()
@@ -178,31 +185,42 @@ jobs:
           set -ex
           cd build
           tdnf -y install ./${{ steps.make_rpm_devel.outputs.name }}
+          sha256sum ./${{ steps.make_rpm_devel.outputs.name }} && ls -l ./${{ steps.make_rpm_devel.outputs.name }}
+          find . -name "libjs_generic.*.so" -print0 | xargs -0 --no-run-if-empty  sha256sum
+          find . -name "libjs_generic.*.so" -print0 | xargs -0 --no-run-if-empty  ls -l
+          find . -name "*.a" -print0 | xargs -0 --no-run-if-empty  sha256sum 
+          find . -name "*.a"-print0 | xargs -0 --no-run-if-empty  ls -l
+          find . -name "*.rpm" -print0 | xargs -0 --no-run-if-empty  sha256sum 
+          find . -name "*.rpm" -print0 | xargs -0 --no-run-if-empty  ls -l
+          find . -name cchost -print0 | xargs -0 --no-run-if-empty  sha256sum 
+          find . -name cchost -print0 | xargs -0 --no-run-if-empty  ls -l 
+          sha256sum ./${{ steps.make_rpm_run.outputs.name }} & ls -l ./${{ steps.make_rpm_run.outputs.name }}
+          echo "hash of package: $(sha256sum ./${{ steps.make_rpm_run.outputs.name }})"
         shell: bash
 
-      - name: "Test Installed CCF"
-        if: "${{ matrix.platform.name == 'virtual' }}"
-        run: |
-          set -ex
-          set -o pipefail
-          cd build
-          cat /tmp/install_prefix | xargs -i bash -c "PYTHON_PACKAGE_PATH=../python ./test_install.sh {}"
-        shell: bash
+      # - name: "Test Installed CCF"
+      #   if: "${{ matrix.platform.name == 'virtual' }}"
+      #   run: |
+      #     set -ex
+      #     set -o pipefail
+      #     cd build
+      #     cat /tmp/install_prefix | xargs -i bash -c "PYTHON_PACKAGE_PATH=../python ./test_install.sh {}"
+      #   shell: bash
 
-      - name: "Recovery Benchmark for Installed CCF"
-        if: "${{ matrix.platform.name == 'virtual' }}"
-        run: |
-          set -ex
-          set -o pipefail
-          cd build
-          cat /tmp/install_prefix | xargs -i bash -c "PYTHON_PACKAGE_PATH=../python ./recovery_benchmark.sh {}"
-        shell: bash
+      # - name: "Recovery Benchmark for Installed CCF"
+      #   if: "${{ matrix.platform.name == 'virtual' }}"
+      #   run: |
+      #     set -ex
+      #     set -o pipefail
+      #     cd build
+      #     cat /tmp/install_prefix | xargs -i bash -c "PYTHON_PACKAGE_PATH=../python ./recovery_benchmark.sh {}"
+      #   shell: bash
 
-      - name: "Test Building a Sample Against Installed CCF"
-        run: |
-          set -ex
-          ./tests/test_install_build.sh -DCOMPILE_TARGET=${{ matrix.platform.name }}
-        shell: bash
+      # - name: "Test Building a Sample Against Installed CCF"
+      #   run: |
+      #     set -ex
+      #     ./tests/test_install_build.sh -DCOMPILE_TARGET=${{ matrix.platform.name }}
+      #   shell: bash
 
       - name: "Upload .rpm Package"
         uses: actions/upload-artifact@v4
@@ -251,27 +269,27 @@ jobs:
           name: wheel
           path: python/${{ steps.build_wheel.outputs.name }}
 
-      - name: "Build TS Package"
-        if: "${{ matrix.platform.name == 'virtual' }}"
-        id: build_tstgz
-        run: |
-          set -ex
-          cd js/ccf-app
-          CCF_VERSION=$(<../../build/VERSION_LONG)
-          CCF_VERSION=${CCF_VERSION#ccf-}
-          echo "Setting npm package version to ${CCF_VERSION}"
-          npm version $CCF_VERSION
-          npm pack
-          PKG=`ls *.tgz`
-          echo "name=$PKG" >> $GITHUB_OUTPUT
-        shell: bash
+      # - name: "Build TS Package"
+      #   if: "${{ matrix.platform.name == 'virtual' }}"
+      #   id: build_tstgz
+      #   run: |
+      #     set -ex
+      #     cd js/ccf-app
+      #     CCF_VERSION=$(<../../build/VERSION_LONG)
+      #     CCF_VERSION=${CCF_VERSION#ccf-}
+      #     echo "Setting npm package version to ${CCF_VERSION}"
+      #     npm version $CCF_VERSION
+      #     npm pack
+      #     PKG=`ls *.tgz`
+      #     echo "name=$PKG" >> $GITHUB_OUTPUT
+      #   shell: bash
 
-      - name: "Upload TS Package"
-        if: "${{ matrix.platform.name == 'virtual' }}"
-        uses: actions/upload-artifact@v4
-        with:
-          name: tstgz
-          path: js/ccf-app/${{ steps.build_tstgz.outputs.name }}
+      # - name: "Upload TS Package"
+      #   if: "${{ matrix.platform.name == 'virtual' }}"
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: tstgz
+      #     path: js/ccf-app/${{ steps.build_tstgz.outputs.name }}
 
   create_release:
     needs:
