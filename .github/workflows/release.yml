@@ -104,6 +104,19 @@ jobs:
           sed -i 's/\btdnf\b/tdnf --snapshottime="$SOURCE_DATE_EPOCH"/g' scripts/setup-ci.sh
           ./scripts/setup-ci.sh
 
+      - name: Patch version.cmake fallback logic
+        run: |
+          sed -i '/if(NOT RETURN_CODE STREQUAL "0")/,/endif()/c\
+          if(NOT RETURN_CODE STREQUAL "0")\n\
+            # message(FATAL_ERROR "Error calling git describe")\n\
+            message(WARNING "git describe failed, using fallback version 6.0.4")\n\
+            set(CCF_VERSION "ccf-6.0.4")\n\
+            set(CCF_VERSION_COMPONENTS "ccf;6.0.4")\n\
+            set(CCF_RELEASE_VERSION "6.0.4")\n\
+            return()\n\
+          endif()' cmake/version.cmake
+          cat cmake/version.cmake
+          
       - name: "Build Release ${{ matrix.platform.name }}"
         shell: bash
         run: |
