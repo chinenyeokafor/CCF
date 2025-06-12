@@ -97,12 +97,14 @@ jobs:
   use_release:
     strategy:
       matrix:
-        platform:
+        include:
           - name: virtual
+            needs_job: build_release_virtual
           - name: snp
+            needs_job: build_release_snp
     runs-on: ubuntu-latest
-    name: use_release_${{ matrix.platform.name }}
-    needs: build_release_${{ matrix.platform.name }}
+    name: use_release_${{ matrix.name }}
+    needs: ${{ matrix.needs_job }}
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v4
