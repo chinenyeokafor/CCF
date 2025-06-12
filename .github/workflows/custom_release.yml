@@ -1,0 +1,307 @@
+name: Custom Release
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+  checks: write
+
+jobs:
+  make_sbom:
+    name: SBOM Generation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: "Install SBOM tool"
+        run: |
+          set -ex
+          curl -Lo sbom-tool https://github.com/microsoft/sbom-tool/releases/latest/download/sbom-tool-linux-x64 > sbom-tool
+          chmod +x sbom-tool
+        shell: bash
+      - name: "Produce SBOM"
+        run: |
+          set -ex
+          CCF_VERSION=${{ github.ref_name }}
+          CCF_VERSION=${CCF_VERSION#ccf-}
+          ./sbom-tool generate -b . -bc . -pn CCF -ps Microsoft -nsb https://sbom.microsoft -pv $CCF_VERSION -V Error
+        shell: bash
+      - name: "Upload SBOM"
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: _manifest/spdx_2.2/*
+
+  # release_notes:
+  #   name: Release Notes
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 1
+  #     - name: "Check Release Notes"
+  #       run: |
+  #         set -ex
+  #         python scripts/extract-release-notes.py --target-git-version
+  #       shell: bash
+  #     - name: "Produce Release Notes"
+  #       run: |
+  #         set -ex
+  #         set -o pipefail
+  #         python ./scripts/extract-release-notes.py --target-git-version --describe-path-changes "./samples/constitution" | tee rel-notes.md
+  #     - name: "Upload Release Notes"
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: relnotes
+  #         path: rel-notes.md
+
+  build_release:
+    name: Build Release
+    # needs: release_notes
+    strategy:
+      matrix:
+        platform:
+          - name: virtual
+            os: azure-linux
+            image: mcr.microsoft.com/azurelinux/base/core:3.0@sha256:91d58fce1e27dd0b711e569fdc173cfb0aec950ff399ea567723936d785388ba
+            test_filter: "benchmark|unit"
+          - name: snp
+            os: azure-linux
+            image: mcr.microsoft.com/azurelinux/base/core:3.0@sha256:91d58fce1e27dd0b711e569fdc173cfb0aec950ff399ea567723936d785388ba
+
+    runs-on: ubuntu-latest
+    steps:
+    
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+          
+      - name: Build and export to Docker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          tags: myimage:latest
+          outputs: type=docker,dest=${{ runner.temp }}/myimage.tar
+        env:
+          SOURCE_DATE_EPOCH: 1749049608
+          PLATFORM: ${{ matrix.platform.name }}
+          COMMIT_ID: ae4fbd88590f7efd40c7d9ae74d2d55bc68957e1
+          
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: myimage
+          path: ${{ runner.temp }}/myimage.tar
+
+  use_release:
+    runs-on: ubuntu-latest
+    needs: build_release
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: myimage
+          path: ${{ runner.temp }}
+
+      - name: Load image
+        run: |
+          docker load --input ${{ runner.temp }}/myimage.tar
+          docker image ls -a 
+          
+      - name: Start container
+        run: |
+          docker run -d --name ccfcontainer --user root --publish-all --cap-add NET_ADMIN --cap-add NET_RAW --cap-add SYS_PTRACE myimage:latest tail -f /dev/null
+      
+      - name: Copy build files from container
+        run: |
+          docker cp ccfcontainer:/CCF/build .
+          
+      - name: Stop container
+        run: |
+          docker stop ccfcontainer
+          
+      - name: "Upload logs for ${{ matrix.platform.name }}"
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.platform.name }}
+          path: |
+            build/workspace/*/*.config.json
+            build/workspace/*/out
+            build/workspace/*/err
+            build/workspace/*/*.ledger/*
+          if-no-files-found: ignore
+
+      - name: "Make .rpm (devel) Package"
+        id: make_rpm_devel
+        run: |
+          set -ex
+          set -o pipefail
+          cd build
+          CCF_GITHUB_PKG=`ls *devel*.rpm`
+          echo "name=$CCF_GITHUB_PKG" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: "Make .rpm (run) Package"
+        id: make_rpm_run
+        run: |
+          set -ex
+          set -o pipefail
+          cd build
+          CCF_GITHUB_PKG=`ls *.rpm | grep -v devel`
+          echo "name=$CCF_GITHUB_PKG" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: "Install CCF package"
+        run: |
+          set -ex
+          cd build
+          tdnf -y install ./${{ steps.make_rpm_devel.outputs.name }}
+          sha256sum ./${{ steps.make_rpm_devel.outputs.name }} && ls -l ./${{ steps.make_rpm_devel.outputs.name }}
+          find . -name "libjs_generic.*.so" -print0 | xargs -0 --no-run-if-empty  sha256sum
+          find . -name "libjs_generic.*.so" -print0 | xargs -0 --no-run-if-empty  ls -l
+          find . -name "*.a" -print0 | xargs -0 --no-run-if-empty  sha256sum 
+          find . -name "*.a"-print0 | xargs -0 --no-run-if-empty  ls -l
+          find . -name "*.rpm" -print0 | xargs -0 --no-run-if-empty  sha256sum 
+          find . -name "*.rpm" -print0 | xargs -0 --no-run-if-empty  ls -l
+          find . -name cchost -print0 | xargs -0 --no-run-if-empty  sha256sum 
+          find . -name cchost -print0 | xargs -0 --no-run-if-empty  ls -l 
+          sha256sum ./${{ steps.make_rpm_run.outputs.name }} & ls -l ./${{ steps.make_rpm_run.outputs.name }}
+          echo "hash of package: $(sha256sum ./${{ steps.make_rpm_run.outputs.name }})"
+        shell: bash
+
+      # - name: "Test Installed CCF"
+      #   if: "${{ matrix.platform.name == 'virtual' }}"
+      #   run: |
+      #     set -ex
+      #     set -o pipefail
+      #     cd build
+      #     cat /tmp/install_prefix | xargs -i bash -c "PYTHON_PACKAGE_PATH=../python ./test_install.sh {}"
+      #   shell: bash
+
+      # - name: "Recovery Benchmark for Installed CCF"
+      #   if: "${{ matrix.platform.name == 'virtual' }}"
+      #   run: |
+      #     set -ex
+      #     set -o pipefail
+      #     cd build
+      #     cat /tmp/install_prefix | xargs -i bash -c "PYTHON_PACKAGE_PATH=../python ./recovery_benchmark.sh {}"
+      #   shell: bash
+
+      # - name: "Test Building a Sample Against Installed CCF"
+      #   run: |
+      #     set -ex
+      #     ./tests/test_install_build.sh -DCOMPILE_TARGET=${{ matrix.platform.name }}
+      #   shell: bash
+
+      - name: "Upload .rpm Package"
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.platform.name }}
+          path: build/${{ steps.make_rpm_run.outputs.name }}
+
+      - name: "Upload -devel.rpm Package"
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.platform.name }}-devel
+          path: build/${{ steps.make_rpm_devel.outputs.name }}
+
+      # - name: "Upload Compatibility Report"
+      #   if: "${{ matrix.platform.name == 'virtual' }}"
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: compatibility
+      #     path: build/compatibility_report.json
+
+      # - name: "Upload TLS Report"
+      #   if: "${{ matrix.platform.name == 'virtual' }}"
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: tls
+      #     path: build/tls_report.html
+
+      - name: "Build Python Wheel"
+        if: "${{ matrix.platform.name == 'virtual' }}"
+        id: build_wheel
+        run: |
+          set -ex
+          cd python
+          python3 -m venv env
+          source ./env/bin/activate
+          pip install wheel build
+          python -m build --wheel
+          WHL=`ls dist/*.whl`
+          echo "name=$WHL" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: "Upload Python Wheel"
+        if: "${{ matrix.platform.name == 'virtual' }}"
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: python/${{ steps.build_wheel.outputs.name }}
+
+      # - name: "Build TS Package"
+      #   if: "${{ matrix.platform.name == 'virtual' }}"
+      #   id: build_tstgz
+      #   run: |
+      #     set -ex
+      #     cd js/ccf-app
+      #     CCF_VERSION=$(<../../build/VERSION_LONG)
+      #     CCF_VERSION=${CCF_VERSION#ccf-}
+      #     echo "Setting npm package version to ${CCF_VERSION}"
+      #     npm version $CCF_VERSION
+      #     npm pack
+      #     PKG=`ls *.tgz`
+      #     echo "name=$PKG" >> $GITHUB_OUTPUT
+      #   shell: bash
+
+      # - name: "Upload TS Package"
+      #   if: "${{ matrix.platform.name == 'virtual' }}"
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: tstgz
+      #     path: js/ccf-app/${{ steps.build_tstgz.outputs.name }}
+
+  create_release:
+    needs:
+      - build_release
+      - make_sbom
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Download Packages
+        uses: actions/download-artifact@v4
+        with:
+          path: pkg
+          pattern: pkg-*
+          merge-multiple: true
+      - name: Download Python Wheel
+        uses: actions/download-artifact@v4
+        with:
+          path: wheel
+          name: wheel
+      - name: Download SBOM
+        uses: actions/download-artifact@v4
+        with:
+          path: sbom
+          name: sbom
+      - run: |
+          set -ex
+          echo "git ref is ${{ github.ref_name }}"
+          CCF_VERSION=${{ github.ref_name }}
+          CCF_VERSION=${CCF_VERSION#ccf-}
+          gh release create --title $CCF_VERSION --draft ${{ github.ref_name }} pkg/* wheel/*.whl sbom/* 
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
