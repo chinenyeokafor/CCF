@@ -60,22 +60,16 @@ jobs:
   #         path: rel-notes.md
 
   build_release:
-    name: Build Release
     # needs: release_notes
     strategy:
       matrix:
         platform:
           - name: virtual
-            os: azure-linux
-            image: mcr.microsoft.com/azurelinux/base/core:3.0@sha256:91d58fce1e27dd0b711e569fdc173cfb0aec950ff399ea567723936d785388ba
             test_filter: "benchmark|unit"
           - name: snp
-            os: azure-linux
-            image: mcr.microsoft.com/azurelinux/base/core:3.0@sha256:91d58fce1e27dd0b711e569fdc173cfb0aec950ff399ea567723936d785388ba
-
     runs-on: ubuntu-latest
+    name: build_release_${{ matrix.platform.name }}
     steps:
-    
       - name: Checkout
         uses: actions/checkout@v4
         
@@ -103,11 +97,14 @@ jobs:
   use_release:
     strategy:
       matrix:
-        platform:
+        include:
           - name: virtual
+            needs_job: build_release_virtual
           - name: snp
+            needs_job: build_release_snp
     runs-on: ubuntu-latest
-    needs: build_release
+    name: use_release_${{ matrix.name }}
+    needs: ${{ matrix.needs_job }}
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v4
