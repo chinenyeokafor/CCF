@@ -66,7 +66,7 @@ find . -name "*.rpm" -print0 | xargs -0 --no-run-if-empty  sha256sum  && \
 find . -name "*.rpm" -print0 | xargs -0 --no-run-if-empty  ls -l && \
 find . -name cchost -print0 | xargs -0 --no-run-if-empty  sha256sum  && \
 find . -name cchost -print0 | xargs -0 --no-run-if-empty  ls -l
-)  > /components_digest.txt
+)  | tee /components_digest.txt
 
 
 # Install package
