@@ -274,6 +274,7 @@ jobs:
     needs:
       - build_release
       - make_sbom
+      - use_release
     name: Create Release
     runs-on: ubuntu-latest
     steps:
