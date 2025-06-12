@@ -101,6 +101,11 @@ jobs:
           path: ${{ runner.temp }}/myimage.tar
 
   use_release:
+    strategy:
+      matrix:
+        platform:
+          - name: virtual
+          - name: snp
     runs-on: ubuntu-latest
     needs: build_release
     steps:
