@@ -1,9 +1,6 @@
 name: "Doc"
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
