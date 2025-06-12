@@ -89,10 +89,10 @@ jobs:
           file: ./Dockerfile
           tags: myimage:latest
           outputs: type=docker,dest=${{ runner.temp }}/myimage.tar
-        env:
-          SOURCE_DATE_EPOCH: 1749049608
-          PLATFORM: ${{ matrix.platform.name }}
-          COMMIT_ID: ae4fbd88590f7efd40c7d9ae74d2d55bc68957e1
+        build-args:
+          SOURCE_DATE_EPOCH=1749049608
+          PLATFORM=${{ matrix.platform.name }}
+          COMMIT_ID=ae4fbd88590f7efd40c7d9ae74d2d55bc68957e1
           
       - name: Upload artifact
         uses: actions/upload-artifact@v4
