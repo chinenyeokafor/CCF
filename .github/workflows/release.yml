@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    tags:
-      - "ccf-[56].*"
+  #   tags:
+  #     - "ccf-[56].*"
   workflow_dispatch:
 
 permissions:
