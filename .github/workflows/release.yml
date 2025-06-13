@@ -80,7 +80,7 @@ jobs:
       SOURCE_DATE_EPOCH: 1749049608
     container:
       image: ${{ matrix.platform.image }}
-      options: "--user root --publish-all --cap-add NET_ADMIN --cap-add NET_RAW --cap-add SYS_PTRACE"
+      options: "--user root --publish-all --cap-add NET_ADMIN --cap-add NET_RAW --cap-add SYS_PTRACE --env $SOURCE_DATE_EPOCH"
 
     steps:
       - name: "Checkout dependencies"
