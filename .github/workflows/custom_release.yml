@@ -99,7 +99,7 @@ jobs:
           context: .
           file: ./Dockerfile
           tags: myimage:latest
-          outputs: type=local,rewrite-timestamp=true,dest=${{ runner.temp }}/${{ matrix.platform.name }}_build
+          outputs: type=local,dest=${{ runner.temp }}/${{ matrix.platform.name }}_build
           build-args: |
             SOURCE_DATE_EPOCH=1749049608
             PLATFORM=${{ matrix.platform.name }}
