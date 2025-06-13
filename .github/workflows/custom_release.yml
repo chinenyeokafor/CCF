@@ -106,7 +106,7 @@ jobs:
         platform:
           - name: virtual
           - name: snp
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: build_release
     steps:
       - name: Download artifact
