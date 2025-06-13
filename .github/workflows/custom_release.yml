@@ -82,23 +82,38 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         
-      - name: Build and export to Docker
+      # - name: Build and export to Docker
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: .
+      #     file: ./Dockerfile
+      #     tags: myimage:latest
+      #     outputs: type=docker,rewrite-timestamp=true,dest=${{ runner.temp }}/myimage.tar
+      #     build-args: |
+      #       SOURCE_DATE_EPOCH=1749049608
+      #       PLATFORM=${{ matrix.platform.name }}
+      #       COMMIT_ID=ae4fbd88590f7efd40c7d9ae74d2d55bc68957e1
+      - name: Build and export build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           tags: myimage:latest
-          outputs: type=docker,rewrite-timestamp=true,dest=${{ runner.temp }}/myimage.tar
+          outputs: type=local,rewrite-timestamp=true,dest=${{ runner.temp }}/${{ matrix.platform.name }}_build
           build-args: |
             SOURCE_DATE_EPOCH=1749049608
             PLATFORM=${{ matrix.platform.name }}
             COMMIT_ID=ae4fbd88590f7efd40c7d9ae74d2d55bc68957e1
-          
-      - name: Upload artifact
+      - name: Copy Build files
         uses: actions/upload-artifact@v4
         with:
-          name: myimage_${{ matrix.platform.name }}
-          path: ${{ runner.temp }}/myimage.tar
+          name: ${{ matrix.platform.name }}_build
+          path: ${{ runner.temp }}/${{ matrix.platform.name }}_build
+      # - name: Upload artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: myimage_${{ matrix.platform.name }}
+      #     path: ${{ runner.temp }}/myimage.tar
 
   use_release:
     strategy:
@@ -120,28 +135,8 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: myimage_${{ matrix.platform.name }}
-          path: ${{ runner.temp }}
-          
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Load image
-        run: |
-          docker load --input ${{ runner.temp }}/myimage.tar
-          docker image ls -a 
-  
-      - name: Start container
-        run: |
-          docker run -d --name ccfcontainer --user root --publish-all --cap-add NET_ADMIN --cap-add NET_RAW --cap-add SYS_PTRACE myimage:latest tail -f /dev/null
-      
-      - name: Copy build files from container
-        run: |
-          docker cp ccfcontainer:/CCF/build .
-          
-      - name: Stop container
-        run: |
-          docker stop ccfcontainer
+          name: ${{ matrix.platform.name }}_build
+          path: ${{ runner.temp }}/${{ matrix.platform.name }}_build
           
       - name: "Upload logs for ${{ matrix.platform.name }}"
         if: success() || failure()
