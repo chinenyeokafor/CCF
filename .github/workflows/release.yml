@@ -63,7 +63,7 @@ jobs:
   #         path: rel-notes.md
 
   get_digest:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     outputs:
       image_digest: ${{ steps.digest.outputs.digest }}
     steps:
@@ -81,11 +81,11 @@ jobs:
         platform:
           - name: virtual
             os: azure-linux
-            image: ${{ env.IMAGE_NAME }}
+            image: mcr.microsoft.com/azurelinux/base/core:3.0
             test_filter: "benchmark|unit"
           - name: snp
             os: azure-linux
-            image: ${{ env.IMAGE_NAME }}
+            image: mcr.microsoft.com/azurelinux/base/core:3.0
 
     runs-on: self-hosted
     env: 
