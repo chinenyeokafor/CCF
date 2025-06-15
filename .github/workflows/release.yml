@@ -99,7 +99,7 @@ jobs:
         run: |
           set -ex
           git config --global --add safe.directory /__w/CCF/CCF
-          image_digest=docker inspect --format='{{index .RepoDigests 0}}' ${{ matrix.platform.image }}
+          image_digest=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ matrix.platform.image }})
           COMMIT_TIME=$(git log -1 --format=%ct)
 
           cat <<EOF > reproduce.json
