@@ -1,0 +1,74 @@
+name: Build Release
+
+on:
+  workflow_call:
+    inputs:
+      image_digest:
+        required: true
+        type: string
+      commit_time:
+        required: true
+        type: string
+      commit_sha:
+        required: true
+        type: string
+      source_date_epoch:
+        required: true
+        type: string
+      platform_name:
+        required: true
+        type: string
+      platform_image:
+        required: true
+        type: string
+
+jobs:
+  build_release:
+    runs-on: self-hosted
+    container:
+      image: ${{ inputs.platform_image }}
+      options: "--user root --publish-all --cap-add NET_ADMIN --cap-add NET_RAW --cap-add SYS_PTRACE"
+
+    env:
+      IMAGE_DIGEST: ${{ inputs.image_digest }}
+      SOURCE_DATE_EPOCH: ${{ inputs.source_date_epoch }}
+
+    steps:
+      - name: "Checkout dependencies"
+        shell: bash
+        run: |
+          gpg --import /etc/pki/rpm-gpg/MICROSOFT-RPM-GPG-KEY
+          tdnf --snapshottime=${{ inputs.source_date_epoch }} -y update
+          tdnf --snapshottime=${{ inputs.source_date_epoch } -y install ca-certificates git
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.commit_sha }}
+
+      - name: "Install dependencies"
+        shell: bash
+        run: |
+          set -ex
+          sed -i '/^set /a\
+          tdnf() {\n\
+              command tdnf --snapshottime="${{ inputs.source_date_epoch }" "$@"\n\
+          }\n\
+          export -f tdnf\n' scripts/setup-ci.sh 
+          ./scripts/setup-ci.sh
+
+      - name: "Build Release ${{ inputs.platform_name }}"
+        shell: bash
+        run: |
+          set -ex
+          git config --global --add safe.directory /__w/CCF/CCF
+          mkdir build
+          cd build
+          cmake -GNinja -DCOMPILE_TARGET=${{ inputs.platform_name }} -DCLIENT_PROTOCOLS_TEST=ON -DCMAKE_BUILD_TYPE=Release ..
+          ninja -v | tee build.log
+          
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ inputs.platform_name }}
+          path: build/
