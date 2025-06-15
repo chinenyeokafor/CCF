@@ -52,7 +52,7 @@ jobs:
           set -ex
           sed -i '/^set /a\
           tdnf() {\n\
-              command tdnf --snapshottime="${{ inputs.source_date_epoch }" "$@"\n\
+              command tdnf --snapshottime="${{ inputs.source_date_epoch }}" "$@"\n\
           }\n\
           export -f tdnf\n' scripts/setup-ci.sh 
           ./scripts/setup-ci.sh
