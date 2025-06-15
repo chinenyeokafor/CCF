@@ -99,24 +99,17 @@ jobs:
         run: |
           set -ex
           git config --global --add safe.directory /__w/CCF/CCF
-          IMAGE=${{ matrix.platform.image }}
-          
-          # Pull image digest (requires Docker CLI or equivalent tool installed)
-          DIGEST=$(crane digest "$IMAGE" 2>/dev/null || echo "unknown")
-          
-          # Get commit time in ISO 8601 format
-          COMMIT_TIME=$(git log -1 --format=%cI)
+          image_digest=docker inspect --format='{{index .RepoDigests 0}}' ${{ matrix.platform.image }}
+          COMMIT_TIME=$(git log -1 --format=%ct)
 
-          # Write to JSON
           cat <<EOF > reproduce.json
           {
-            "image": "$IMAGE@$DIGEST",
+            "image": "$image_digest",
             "commit_time": "$COMMIT_TIME"
           }
           EOF
           cat reproduce.json
-
-
+          
       - name: "Install dependencies"
         shell: bash
         run: |
