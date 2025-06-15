@@ -97,6 +97,8 @@ jobs:
       - name: "Capture image digest and commit time"
         shell: bash
         run: |
+          set -ex
+          git config --global --add safe.directory /__w/CCF/CCF
           IMAGE=${{ matrix.platform.image }}
           
           # Pull image digest (requires Docker CLI or equivalent tool installed)
