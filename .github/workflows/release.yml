@@ -12,6 +12,7 @@ permissions:
   checks: write
 env:
   IMAGE_NAME: mcr.microsoft.com/azurelinux/base/core:3.0
+  
 jobs:
   make_sbom:
     name: SBOM Generation
