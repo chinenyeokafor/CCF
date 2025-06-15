@@ -39,7 +39,7 @@ jobs:
         run: |
           gpg --import /etc/pki/rpm-gpg/MICROSOFT-RPM-GPG-KEY
           tdnf --snapshottime=${{ inputs.source_date_epoch }} -y update
-          tdnf --snapshottime=${{ inputs.source_date_epoch } -y install ca-certificates git
+          tdnf --snapshottime=${{ inputs.source_date_epoch }} -y install ca-certificates git
 
       - uses: actions/checkout@v4
         with:
