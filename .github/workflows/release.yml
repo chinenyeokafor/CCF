@@ -10,7 +10,8 @@ permissions:
   contents: write
   actions: read
   checks: write
-
+env:
+  IMAGE_NAME: mcr.microsoft.com/azurelinux/base/core:3.0
 jobs:
   make_sbom:
     name: SBOM Generation
@@ -61,22 +62,34 @@ jobs:
   #         name: relnotes
   #         path: rel-notes.md
 
+  get_digest:
+    runs-on: ubuntu-latest
+    outputs:
+      image_digest: ${{ steps.digest.outputs.digest }}
+    steps:
+      - id: digest
+        run: |
+          docker pull $IMAGE_NAME
+          echo "digest=$(docker inspect --format='{{index .RepoDigests 0}}' $IMAGE_NAME)" >> $GITHUB_OUTPUT
+
   build_release:
     name: Build Release
     # needs: release_notes
+    needs: get_digest
     strategy:
       matrix:
         platform:
           - name: virtual
             os: azure-linux
-            image: mcr.microsoft.com/azurelinux/base/core:3.0
+            image: ${{ env.IMAGE_NAME }}
             test_filter: "benchmark|unit"
           - name: snp
             os: azure-linux
-            image: mcr.microsoft.com/azurelinux/base/core:3.0
+            image: ${{ env.IMAGE_NAME }}
 
     runs-on: self-hosted
     env: 
+      IMAGE_DIGEST: ${{ needs.get_digest.outputs.image_digest }}
       SOURCE_DATE_EPOCH: 1749049608
     container:
       image: ${{ matrix.platform.image }}
@@ -99,12 +112,11 @@ jobs:
         run: |
           set -ex
           git config --global --add safe.directory /__w/CCF/CCF
-          image_digest=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ matrix.platform.image }})
           COMMIT_TIME=$(git log -1 --format=%ct)
 
           cat <<EOF > reproduce.json
           {
-            "image": "$image_digest",
+            "image": "$IMAGE_DIGEST",
             "commit_time": "$COMMIT_TIME"
           }
           EOF
