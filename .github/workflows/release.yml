@@ -110,7 +110,7 @@ jobs:
             os: azure-linux
             image: mcr.microsoft.com/azurelinux/base/core:3.0
 
-    uses: ./.github/workflows/build-release-reusable.yml
+    uses: ./.github/workflows/build.yml
     with:
       image_digest: ${{ needs.get_digest.outputs.image_digest }}
       commit_time: ${{ inputs.commit_time }}
