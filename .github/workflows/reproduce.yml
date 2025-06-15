@@ -1,0 +1,44 @@
+name: Reproduce Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_digest:
+        required: true
+        type: string
+      commit_time:
+        required: true
+        type: string
+      commit_sha:
+        required: true
+        type: string
+      source_date_epoch:
+        required: true
+        type: string
+      platform_name:
+        required: true
+        type: string
+      platform_image:
+        required: true
+        type: string
+
+jobs:
+  reproduce_build:
+    strategy:
+      matrix:
+        platform:
+          - name: virtual
+            os: azure-linux
+            image: mcr.microsoft.com/azurelinux/base/core:3.0
+          - name: snp
+            os: azure-linux
+            image: mcr.microsoft.com/azurelinux/base/core:3.0
+
+    uses: ./.github/workflows/build.yml
+    with:
+      image_digest: ${{ inputs.image_digest }}
+      commit_time: ${{ inputs.commit_time }}
+      commit_sha: ${{ inputs.commit_sha }}
+      source_date_epoch: ${{ inputs.source_date_epoch }}
+      platform_name: ${{ inputs.platform_name }}
+      platform_image: ${{ inputs.platform_image }}
