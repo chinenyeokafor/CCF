@@ -369,7 +369,6 @@ jobs:
           set -ex
           tdnf install --snapshottime=${{ needs.build_release.outputs.SOURCE_DATE_EPOCH }} -y jq
           git config --global --add safe.directory /__w/CCF/CCF
-          mkdir -p $REPRO_DIR
           ./reproduce/reproduce_rpm.sh repro/reproduce-${{ matrix.platform.name }}.json
           RPM_NAMES=$(ls "$REPRO_DIR" || true)
           if [ -z "$RPM_NAMES" ]; then
